@@ -2,11 +2,15 @@
 import requests
 import re
 import pprint
+import json
+
 from bs4 import BeautifulSoup
 from datetime import datetime 
 
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
+upstream_zuul_url = 'http://zuul.openstack.org/status'
+
 infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
 def get_infra_issues():
@@ -22,15 +26,23 @@ def get_infra_issues():
             issues.append((ts, issue))
     return issues
 
+def get_upstream_tripleo_gate():
+    upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
+    # TODO: filter by 'gate'
+    gate_queues = next(pipeline['change_queues'] for pipeline in upstream_zuul['pipelines'] if pipeline['name'] == 'gate')
+    tripleo_queue = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads'][0]
+    return tripleo_queue
+
 def filter_infra_issues_by_date(date):
     issues = get_infra_issues()
     search_result = [(ts, issue) for ts, issue in issues if ts > date]
     return search_result
 
 def main():
-    filtered_issues = filter_infra_issues_by_date(datetime(2018, 3, 13))
     pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(filtered_issues)
+    filtered_issues = filter_infra_issues_by_date(datetime(2018, 3, 13))
+    upstream_tripleo_gate = get_upstream_tripleo_gate()
+    pp.pprint(upstream_tripleo_gate)
 
 if __name__ == '__main__':
     main()
