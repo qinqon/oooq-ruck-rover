@@ -55,10 +55,10 @@ def get_upstream_tripleo_bugs(since):
     #    browsed_bugs.append(browser.get(bug.self_link))
     #return browsed_bugs
 
-def get_oooq_status():
+def get_irc_gate_status():
     client = irc.client.Reactor()
     server = client.server()
-    
+    failing_jobs = [""]
 
     def on_connect(connection, event):
         connection.join('#oooq')
@@ -74,6 +74,7 @@ def get_oooq_status():
         # TODO: Check it's hubbot
         if failing_check_jobs.match(message):
             print("hubbot: {}".format(message))
+            failing_jobs[0] = message
             connection.quit("Using irc.client.py")
 
     try:
@@ -92,7 +93,7 @@ def get_oooq_status():
     except SystemExit:
         print('END')
 
-    return "TODO"
+    return failing_jobs[0]
 
 def filter_infra_issues_by_date(date):
     issues = get_infra_issues()
@@ -103,16 +104,15 @@ def main():
     since_date=datetime(2018, 3, 13)
     status = {}
     #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION
-    #TODO: Check #oooq; ! gatestatus
     #TODO: http://www.rssmix.com/u/8262477/rss.xml
-    #status['infra-issues'] = filter_infra_issues_by_date(since_date)
-    #status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
-    #status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
-    status['oooq-status'] = get_oooq_status()
-    #print("Number of infra issues: {}".format(len(status['infra-issues'])))
-    #print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
-    #print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
-    print("OOOQ status: {}".format(len(status['oooq-status'])))
+    status['infra-issues'] = filter_infra_issues_by_date(since_date)
+    status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
+    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
+    status['gate-status'] = get_irc_gate_status()
+    print("Number of infra issues: {}".format(len(status['infra-issues'])))
+    print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
+    print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
+    print("gate status: {}".format(status['gate-status']))
 
 if __name__ == '__main__':
     main()
