@@ -40,6 +40,7 @@ def get_upstream_tripleo_gate():
     upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
     # TODO: filter by 'gate'
     gate_queues = next(pipeline['change_queues'] for pipeline in upstream_zuul['pipelines'] if pipeline['name'] == 'gate')
+    # FIXME: queue empty
     tripleo_queue = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads'][0]
     return tripleo_queue
 
@@ -75,7 +76,6 @@ def get_irc_gate_status():
         message = event.arguments[0]
         # TODO: Check it's hubbot
         if failing_check_jobs.match(message):
-            print("hubbot: {}".format(message))
             failing_jobs[0] = message
             connection.quit("Using irc.client.py")
 
