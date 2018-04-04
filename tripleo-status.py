@@ -6,6 +6,7 @@ import json
 import irc.client
 import itertools
 import sys
+import feedparser
 
 from bs4 import BeautifulSoup
 from datetime import datetime 
@@ -16,6 +17,7 @@ failing_check_jobs = re.compile('^FAILING CHECK JOBS: .*')
 
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
+rechecks_url = 'http://status.openstack.org/elastic-recheck/data/all.json'
 
 infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
@@ -95,6 +97,18 @@ def get_irc_gate_status():
 
     return failing_jobs[0]
 
+def get_gate_failures(since):
+    # TODO: Filter by since
+    return feedparser.parse('http://www.rssmix.com/u/8262477/rss.xml')
+
+def get_top_tripleo_rechecks():
+    limit=5
+    affected_project='tripleo'
+    rechecks = json.loads(requests.get(rechecks_url).content)['buglist'][:limit]
+    for recheck in rechecks:
+        del recheck['data']
+    return [recheck for recheck in rechecks if affected_project in recheck['bug_data']['affects']]
+
 def filter_infra_issues_by_date(date):
     issues = get_infra_issues()
     search_result = [(ts, issue) for ts, issue in issues if ts > date]
@@ -103,16 +117,20 @@ def filter_infra_issues_by_date(date):
 def main():
     since_date=datetime(2018, 3, 13)
     status = {}
-    #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION
-    #TODO: http://www.rssmix.com/u/8262477/rss.xml
     status['infra-issues'] = filter_infra_issues_by_date(since_date)
     status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
     status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
     status['gate-status'] = get_irc_gate_status()
+    status['gate-failures'] = get_gate_failures(since=since_date)
+    status['top-tripleo-rechecks'] = get_top_tripleo_rechecks()
+
+    #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION
+    
     print("Number of infra issues: {}".format(len(status['infra-issues'])))
     print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
     print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
-    print("gate status: {}".format(status['gate-status']))
-
+    print("Gate status: {}".format(status['gate-status']))
+    print("Number of gate failures: {}".format(len(status['gate-failures'])))
+    print("Number of tripleo rechecks: {}".format(len(status['top-tripleo-rechecks'])))
 if __name__ == '__main__':
     main()
