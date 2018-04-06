@@ -14,10 +14,13 @@ from launchpadlib.launchpad import Launchpad
 
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
 failing_check_jobs = re.compile('^FAILING CHECK JOBS: .*')
+sova_status_table = re.compile('.*arrayToDataTable\((\[.*\])\);.*', re.DOTALL)
+
 
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
 rechecks_url = 'http://status.openstack.org/elastic-recheck/data/all.json'
+sova_gate_status_url = 'http://cistatus.tripleo.org/gates/'
 
 infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
@@ -38,10 +41,11 @@ def get_infra_issues():
 
 def get_upstream_tripleo_gate():
     upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
-    # TODO: filter by 'gate'
     gate_queues = next(pipeline['change_queues'] for pipeline in upstream_zuul['pipelines'] if pipeline['name'] == 'gate')
-    # FIXME: queue empty
-    tripleo_queue = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads'][0]
+    tripleo_heads = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads']
+    tripleo_queue = []
+    if tripleo_heads:
+        tripleo_queue = [0]
     return tripleo_queue
 
 def get_upstream_tripleo_bugs(since):
@@ -109,28 +113,59 @@ def get_top_tripleo_rechecks():
         del recheck['data']
     return [recheck for recheck in rechecks if affected_project in recheck['bug_data']['affects']]
 
+def get_sova_gate_status():
+    sova_gate_status = requests.get(sova_gate_status_url) 
+    sova_gate_status_soup = BeautifulSoup(sova_gate_status.content, 'html.parser')
+    scripts = sova_gate_status_soup.find_all('script')
+    sova_status = {}
+    for script in scripts:
+        if 'ci_overall' in script.get_text():
+            ci_overall = eval((re.findall(sova_status_table, script.string)[0]))
+            sova_status['master-ci-overall'] = ci_overall
+            break
+    return sova_status
+ 
 def filter_infra_issues_by_date(date):
     issues = get_infra_issues()
     search_result = [(ts, issue) for ts, issue in issues if ts > date]
     return search_result
 
+# TODO: Use pandas to simplify rendering and filtering
+# TODO: Parallelize gathering of information
 def main():
     since_date=datetime(2018, 3, 13)
     status = {}
-    status['infra-issues'] = filter_infra_issues_by_date(since_date)
-    status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
-    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
-    status['gate-status'] = get_irc_gate_status()
-    status['gate-failures'] = get_gate_failures(since=since_date)
-    status['top-tripleo-rechecks'] = get_top_tripleo_rechecks()
-
-    #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION
+#    status['infra-issues'] = filter_infra_issues_by_date(since_date)
+#    status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
+#    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
+#    status['gate-status'] = get_irc_gate_status()
+#    status['gate-failures'] = get_gate_failures(since=since_date)
+#    status['top-tripleo-rechecks'] = get_top_tripleo_rechecks()
+    status['sova-gate-status'] = get_sova_gate_status()
     
-    print("Number of infra issues: {}".format(len(status['infra-issues'])))
-    print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
-    print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
-    print("Gate status: {}".format(status['gate-status']))
-    print("Number of gate failures: {}".format(len(status['gate-failures'])))
-    print("Number of tripleo rechecks: {}".format(len(status['top-tripleo-rechecks'])))
+#    print("---")
+#    print("--- TripleO gate queue ---")
+#    print("---")
+#    print("Number of infra issues: {}".format(len(status['infra-issues'])))
+#    print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
+#    #TODO: Check queue time")
+#    print("")
+#    print("---")
+#    print("--- New bugs ---")
+#    print("---")
+#    print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
+#    print("Gate status: {}".format(status['gate-status']))
+#    #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION")
+#    print("Number of gate failures: {}".format(len(status['gate-failures'])))
+#    print("---")
+#    print("--- Promotion branches ---")
+#    print("---")
+#    print("TODO")
+#    print("---")
+#    print("--- Upstream Health ---")
+#    print("---")
+#    print("Number of tripleo rechecks: {}".format(len(status['top-tripleo-rechecks'])))
+    print("Sova gate status: {}".format(status['sova-gate-status']))
+
 if __name__ == '__main__':
     main()
