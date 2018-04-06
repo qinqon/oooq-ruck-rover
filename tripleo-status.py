@@ -15,7 +15,7 @@ from launchpadlib.launchpad import Launchpad
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
 failing_check_jobs = re.compile('^FAILING CHECK JOBS: .*')
 sova_status_table = re.compile('.*arrayToDataTable\((\[.*\])\);.*', re.DOTALL)
-
+sova_overall_job_name = re.compile('.*.*function (.*)_overall.*')
 
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
@@ -122,7 +122,11 @@ def get_sova_gate_status():
         if 'ci_overall' in script.get_text():
             ci_overall = eval((re.findall(sova_status_table, script.string)[0]))
             sova_status['master-ci-overall'] = ci_overall
-            break
+        elif '_overall' in script.get_text():
+            print(script.string)
+            job_name = re.findall(sova_overall_job_name, script.string)[0]
+            job_status = eval((re.findall(sova_status_table, script.string)[0]))
+            sova_status[job_name] = ci_overall
     return sova_status
  
 def filter_infra_issues_by_date(date):
