@@ -8,6 +8,9 @@ import itertools
 import sys
 import feedparser
 
+import pandas as pd
+import numpy as np
+
 from bs4 import BeautifulSoup
 from datetime import datetime 
 from launchpadlib.launchpad import Launchpad
@@ -30,14 +33,14 @@ def get_infra_issues():
     infra_status = requests.get(infra_status_url) 
     infra_status_soup = BeautifulSoup(infra_status.content, 'html.parser')
     raw_issues = infra_status_soup.find_all('li')
+    times = []
     issues = []
     for ts_and_issue in raw_issues:
         m = infra_status_regexp.match(ts_and_issue.get_text())
         if m:
-            ts = datetime.strptime(m.group(1), infra_status_utc_format)
-            issue = m.group(2)
-            issues.append((ts, issue))
-    return issues
+            times.append(datetime.strptime(m.group(1), infra_status_utc_format))
+            issues.append(m.group(2))
+    return pd.DataFrame({ 'time': times, 'issue': issues})
 
 def get_upstream_tripleo_gate():
     upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
@@ -46,7 +49,7 @@ def get_upstream_tripleo_gate():
     tripleo_queue = []
     if tripleo_heads:
         tripleo_queue = [0]
-    return tripleo_queue
+    return pd.DataFrame(tripleo_queue)
 
 def get_upstream_tripleo_bugs(since):
     launchpad = Launchpad.login_anonymously('OOOQ Ruck Rover', 'production', cachedir, version='devel')
@@ -56,11 +59,6 @@ def get_upstream_tripleo_bugs(since):
     bugs = project.searchTasks(created_since = since)
     
     return bugs
-    #browsed_bugs = []
-    #for bug in bugs:
-    #    browser = launchpad._browser
-    #    browsed_bugs.append(browser.get(bug.self_link))
-    #return browsed_bugs
 
 def get_irc_gate_status():
     client = irc.client.Reactor()
@@ -105,13 +103,9 @@ def get_gate_failures(since):
     # TODO: Filter by since
     return feedparser.parse('http://www.rssmix.com/u/8262477/rss.xml')
 
-def get_top_tripleo_rechecks():
-    limit=5
-    affected_project='tripleo'
-    rechecks = json.loads(requests.get(rechecks_url).content)['buglist'][:limit]
-    for recheck in rechecks:
-        del recheck['data']
-    return [recheck for recheck in rechecks if affected_project in recheck['bug_data']['affects']]
+def get_rechecks():
+    rechecks = json.loads(requests.get(rechecks_url).content)['buglist']
+    return rechecks
 
 def get_sova_gate_status():
     sova_gate_status = requests.get(sova_gate_status_url) 
@@ -123,7 +117,6 @@ def get_sova_gate_status():
             ci_overall = eval((re.findall(sova_status_table, script.string)[0]))
             sova_status['master-ci-overall'] = ci_overall
         elif '_overall' in script.get_text():
-            print(script.string)
             job_name = re.findall(sova_overall_job_name, script.string)[0]
             job_status = eval((re.findall(sova_status_table, script.string)[0]))
             sova_status[job_name] = ci_overall
@@ -139,37 +132,13 @@ def filter_infra_issues_by_date(date):
 def main():
     since_date=datetime(2018, 3, 13)
     status = {}
-#    status['infra-issues'] = filter_infra_issues_by_date(since_date)
-#    status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
-#    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
-#    status['gate-status'] = get_irc_gate_status()
-#    status['gate-failures'] = get_gate_failures(since=since_date)
-#    status['top-tripleo-rechecks'] = get_top_tripleo_rechecks()
+    status['infra-issues'] = get_infra_issues()
+    status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
+    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
+    status['gate-status'] = get_irc_gate_status()
+    status['gate-failures'] = get_gate_failures(since=since_date)
+    status['top-tripleo-rechecks'] = get_rechecks()
     status['sova-gate-status'] = get_sova_gate_status()
     
-#    print("---")
-#    print("--- TripleO gate queue ---")
-#    print("---")
-#    print("Number of infra issues: {}".format(len(status['infra-issues'])))
-#    print("Size of tripleo gate queue: {}".format(len(status['upstream-tripleo-gate'])))
-#    #TODO: Check queue time")
-#    print("")
-#    print("---")
-#    print("--- New bugs ---")
-#    print("---")
-#    print("Number of tripleo bugs: {}".format(len(status['upstream-tripleo-bugs'])))
-#    print("Gate status: {}".format(status['gate-status']))
-#    #TODO: Check #tripleo for <ooolpbot> URGENT TRIPLEO TASKS NEED ATTENTION")
-#    print("Number of gate failures: {}".format(len(status['gate-failures'])))
-#    print("---")
-#    print("--- Promotion branches ---")
-#    print("---")
-#    print("TODO")
-#    print("---")
-#    print("--- Upstream Health ---")
-#    print("---")
-#    print("Number of tripleo rechecks: {}".format(len(status['top-tripleo-rechecks'])))
-    print("Sova gate status: {}".format(status['sova-gate-status']))
-
 if __name__ == '__main__':
     main()
