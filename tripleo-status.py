@@ -24,6 +24,7 @@ infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
 rechecks_url = 'http://status.openstack.org/elastic-recheck/data/all.json'
 sova_gate_status_url = 'http://cistatus.tripleo.org/gates/'
+rhos_dashboard_url = 'http://rhos-release.virt.bos.redhat.com:3030/events'
 
 infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
@@ -101,10 +102,10 @@ def get_irc_gate_status():
 
 def get_gate_failures(since):
     # TODO: Filter by since
-    return feedparser.parse('http://www.rssmix.com/u/8262477/rss.xml')
+    return pd.DataFrame(feedparser.parse('http://www.rssmix.com/u/8262477/rss.xml')['entries'])
 
 def get_rechecks():
-    rechecks = json.loads(requests.get(rechecks_url).content)['buglist']
+    rechecks = json.loads(requests.get(rhos_dashboard_url).content)['buglist']
     return rechecks
 
 def get_sova_gate_status():
@@ -122,6 +123,18 @@ def get_sova_gate_status():
             sova_status[job_name] = ci_overall
     return sova_status
  
+def get_rhos_dashboard():
+    print('get_rhos_dashboard')
+    dashboard_data = []
+    with requests.get(rhos_dashboard_url, stream=True) as response:
+        for line in response.iter_lines():
+            #We don't care about the "end" entries so we stop at them
+            if "\"end\"" in line:
+                break
+            if line:
+                dashboard_data.append(json.loads(line.replace("data: ", "")))
+    return dashboard_data
+
 def filter_infra_issues_by_date(date):
     issues = get_infra_issues()
     search_result = [(ts, issue) for ts, issue in issues if ts > date]
@@ -130,6 +143,7 @@ def filter_infra_issues_by_date(date):
 # TODO: Use pandas to simplify rendering and filtering
 # TODO: Parallelize gathering of information
 def main():
+    pp = pprint.PrettyPrinter(indent=4)
     since_date=datetime(2018, 3, 13)
     status = {}
     status['infra-issues'] = get_infra_issues()
@@ -137,8 +151,11 @@ def main():
     status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
     status['gate-status'] = get_irc_gate_status()
     status['gate-failures'] = get_gate_failures(since=since_date)
-    status['top-tripleo-rechecks'] = get_rechecks()
+    status['rechecks'] = get_rechecks()
     status['sova-gate-status'] = get_sova_gate_status()
+    status['rhos-dashboard'] = get_rhos_dashboard()
+
+    pp.pprint(status)
     
 if __name__ == '__main__':
     main()
