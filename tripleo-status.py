@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 from bs4 import BeautifulSoup
-from datetime import datetime 
+from datetime import datetime, timedelta
 from launchpadlib.launchpad import Launchpad
 
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
@@ -25,10 +25,14 @@ upstream_zuul_url = 'http://zuul.openstack.org/status'
 rechecks_url = 'http://status.openstack.org/elastic-recheck/data/all.json'
 sova_gate_status_url = 'http://cistatus.tripleo.org/gates/'
 rhos_dashboard_url = 'http://rhos-release.virt.bos.redhat.com:3030/events'
+gate_failures_url = 'http://www.rssmix.com/u/8262477/rss.xml'
 
 infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
 cachedir = "/home/ellorent/.launchpadlib/cache/"
+
+def to_infra_date(date_str):
+    return datetime.strptime(date_str, infra_status_utc_format)
 
 def get_infra_issues():
     infra_status = requests.get(infra_status_url) 
@@ -39,9 +43,10 @@ def get_infra_issues():
     for ts_and_issue in raw_issues:
         m = infra_status_regexp.match(ts_and_issue.get_text())
         if m:
-            times.append(datetime.strptime(m.group(1), infra_status_utc_format))
+            times.append(to_infra_date(m.group(1)))
             issues.append(m.group(2))
-    return pd.DataFrame({ 'time': times, 'issue': issues})
+    time_and_issue = pd.DataFrame({ 'time': times, 'issue': issues})
+    return time_and_issue.set_index('time')
 
 def get_upstream_tripleo_gate():
     upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
@@ -52,12 +57,12 @@ def get_upstream_tripleo_gate():
         tripleo_queue = [0]
     return pd.DataFrame(tripleo_queue)
 
-def get_upstream_tripleo_bugs(since):
+def get_upstream_tripleo_bugs():
     launchpad = Launchpad.login_anonymously('OOOQ Ruck Rover', 'production', cachedir, version='devel')
     project = launchpad.projects['tripleo']
 
     # We can filter by status too 
-    bugs = project.searchTasks(created_since = since)
+    bugs = project.searchTasks()
     
     return bugs
 
@@ -100,9 +105,8 @@ def get_irc_gate_status():
 
     return failing_jobs[0]
 
-def get_gate_failures(since):
-    # TODO: Filter by since
-    return pd.DataFrame(feedparser.parse('http://www.rssmix.com/u/8262477/rss.xml')['entries'])
+def get_gate_failures():
+    return pd.DataFrame(feedparser.parse(gate_failures_url)['entries'])
 
 def get_rechecks():
     rechecks = json.loads(requests.get(rhos_dashboard_url).content)['buglist']
@@ -135,27 +139,46 @@ def get_rhos_dashboard():
                 dashboard_data.append(json.loads(line.replace("data: ", "")))
     return dashboard_data
 
-def filter_infra_issues_by_date(date):
-    issues = get_infra_issues()
-    search_result = [(ts, issue) for ts, issue in issues if ts > date]
-    return search_result
-
-# TODO: Use pandas to simplify rendering and filtering
-# TODO: Parallelize gathering of information
-def main():
-    pp = pprint.PrettyPrinter(indent=4)
-    since_date=datetime(2018, 3, 13)
+def get_full_status():
     status = {}
+    
+    # TODO: Parallelize gathering of information
     status['infra-issues'] = get_infra_issues()
     status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
-    status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs(since=since_date)
-    status['gate-status'] = get_irc_gate_status()
-    status['gate-failures'] = get_gate_failures(since=since_date)
-    status['rechecks'] = get_rechecks()
-    status['sova-gate-status'] = get_sova_gate_status()
-    status['rhos-dashboard'] = get_rhos_dashboard()
-
-    pp.pprint(status)
+    #status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs()
+    #status['gate-status'] = get_irc_gate_status()
+    #status['gate-failures'] = get_gate_failures()
+    #status['rechecks'] = get_rechecks()
+    #status['sova-gate-status'] = get_sova_gate_status()
+    #status['rhos-dashboard'] = get_rhos_dashboard()
     
+    return status
+
+def get_todays_week_range():
+
+    today = datetime.now()
+    start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=6)
+    return (start, end)
+
+def analyze_infra_issues(infra_issues):
+    print("Openstack infra issues new issues:")
+    week_start, week_end = get_todays_week_range()
+    # TODO: Print week's ones
+    print(infra_issues.head())
+
+def analyze_upstream_tripleo_gate(gate_queue):
+    print("Upstream tripleo gate queue:")
+    print(gate_queue)
+
+# TODO: Use logstash or pandas ?
+def analyze_status(status):
+    analyze_infra_issues(status['infra-issues'])
+    analyze_upstream_tripleo_gate(status['upstream-tripleo-gate'])
+
+def main():
+    tripleo_status = get_full_status()
+    analyze_status(tripleo_status)
+
 if __name__ == '__main__':
     main()
