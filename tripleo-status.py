@@ -13,6 +13,7 @@ import numpy as np
 
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from time import time
 from launchpadlib.launchpad import Launchpad
 
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
@@ -54,9 +55,8 @@ def get_upstream_tripleo_gate():
     upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
     gate_queues = next(pipeline['change_queues'] for pipeline in upstream_zuul['pipelines'] if pipeline['name'] == 'gate')
     tripleo_heads = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads']
-    tripleo_queue = []
     if tripleo_heads:
-        tripleo_queue = [0]
+        tripleo_queue = tripleo_heads[0]
     return pd.DataFrame(tripleo_queue)
 
 def get_upstream_tripleo_bugs():
@@ -130,7 +130,6 @@ def get_sova_gate_status():
     return sova_status
  
 def get_rhos_dashboard():
-    print('get_rhos_dashboard')
     dashboard_data = []
     with requests.get(rhos_dashboard_url, stream=True) as response:
         for line in response.iter_lines():
@@ -143,12 +142,11 @@ def get_rhos_dashboard():
 
 def get_full_status():
     status = {}
-    
     # TODO: Parallelize gathering of information
     status['infra-issues'] = get_infra_issues()
     status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
+    status['gate-status'] = get_irc_gate_status()
     #status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs()
-    #status['gate-status'] = get_irc_gate_status()
     #status['gate-failures'] = get_gate_failures()
     #status['rechecks'] = get_rechecks()
     #status['sova-gate-status'] = get_sova_gate_status()
@@ -170,17 +168,26 @@ def analyze_infra_issues(infra_issues):
     print(infra_issues.head())
 
 def analyze_upstream_tripleo_gate(gate_queue):
-    print("Upstream tripleo gate queue:")
-    print(gate_queue)
+    age = 7
+    print("Upstream tripleo gate jobs older older than {} hours:".format(age))
+    # Age hours ago 
+    hours_ago = time() - (age * 3600)
+    # From zuul's code
+    hours_ago = int(hours_ago * 1000)
+    print(gate_queue.loc[gate_queue['enqueue_time'] < hours_ago])
+
+
+def analyze_tripleo_gate_status(gate_status):
+    print("Tripleo gate status: ")
+    # TODO: search failing builds
+    print(gate_status)
 
 # TODO: Use logstash or pandas ?
-def analyze_status(status):
-    analyze_infra_issues(status['infra-issues'])
-    analyze_upstream_tripleo_gate(status['upstream-tripleo-gate'])
-
 def main():
-    tripleo_status = get_full_status()
-    analyze_status(tripleo_status)
+    # TODO: select with arguments what to show
+    analyze_infra_issues(get_infra_issues())
+    analyze_upstream_tripleo_gate(get_upstream_tripleo_gate())
+    analyze_tripleo_gate_status(get_irc_gate_status())
 
 if __name__ == '__main__':
     main()
