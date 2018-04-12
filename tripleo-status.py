@@ -31,6 +31,8 @@ infra_status_utc_format = '%Y-%m-%d %H:%M:%S'
 
 cachedir = "/home/ellorent/.launchpadlib/cache/"
 
+pd.set_option('display.max_colwidth', -1)
+
 def to_infra_date(date_str):
     return datetime.strptime(date_str, infra_status_utc_format)
 
@@ -162,7 +164,7 @@ def get_todays_week_range():
     return (start, end)
 
 def analyze_infra_issues(infra_issues):
-    print("Openstack infra issues new issues:")
+    print("Openstack infra new issues:")
     week_start, week_end = get_todays_week_range()
     # TODO: Print week's ones
     print(infra_issues.head())
