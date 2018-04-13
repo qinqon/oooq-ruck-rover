@@ -111,8 +111,8 @@ def get_gate_failures():
     return pd.DataFrame(feedparser.parse(gate_failures_url)['entries'])
 
 def get_rechecks():
-    rechecks = json.loads(requests.get(rhos_dashboard_url).content)['buglist']
-    return rechecks
+    rechecks = json.loads(requests.get(rechecks_url).content)['buglist']
+    return pd.DataFrame.from_records(rechecks)
 
 def get_sova_gate_status():
     sova_gate_status = requests.get(sova_gate_status_url) 
@@ -142,13 +142,11 @@ def get_rhos_dashboard():
 
 def get_full_status():
     status = {}
-    # TODO: Parallelize gathering of information
     status['infra-issues'] = get_infra_issues()
     status['upstream-tripleo-gate'] = get_upstream_tripleo_gate()
     status['gate-status'] = get_irc_gate_status()
     #status['upstream-tripleo-bugs'] = get_upstream_tripleo_bugs()
     #status['gate-failures'] = get_gate_failures()
-    #status['rechecks'] = get_rechecks()
     #status['sova-gate-status'] = get_sova_gate_status()
     #status['rhos-dashboard'] = get_rhos_dashboard()
     
@@ -182,12 +180,23 @@ def analyze_tripleo_gate_status(gate_status):
     # TODO: search failing builds
     print(gate_status)
 
+def analyze_rechecks(rechecks):
+    top_number = 5
+    print("Top {} rechecks: ")
+    # Print top number
+    # TODO: Filter by tripleo
+    print(rechecks.head(top_number)['bug_data'])
+
 # TODO: Use logstash or pandas ?
+# TODO: Parallelize gathering of information
 def main():
     # TODO: select with arguments what to show
     analyze_infra_issues(get_infra_issues())
     analyze_upstream_tripleo_gate(get_upstream_tripleo_gate())
-    analyze_tripleo_gate_status(get_irc_gate_status())
+    analyze_rechecks(get_rechecks())
+    
+    #FIXME: Very costly, find a way to bypass IRC
+    #analyze_tripleo_gate_status(get_irc_gate_status())
 
 if __name__ == '__main__':
     main()
