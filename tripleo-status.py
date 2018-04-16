@@ -23,6 +23,7 @@ sova_overall_job_name = re.compile('.*.*function (.*)_overall.*')
 
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
+rdo_zuul_url = 'https://review.rdoproject.org/zuul/status.json'
 rechecks_url = 'http://status.openstack.org/elastic-recheck/data/all.json'
 sova_gate_status_url = 'http://cistatus.tripleo.org/gates/'
 rhos_dashboard_url = 'http://rhos-release.virt.bos.redhat.com:3030/events'
@@ -51,13 +52,16 @@ def get_infra_issues():
     time_and_issue = pd.DataFrame({ 'time': times, 'issue': issues})
     return time_and_issue.set_index('time')
 
-def get_upstream_tripleo_gate():
-    upstream_zuul = json.loads(requests.get(upstream_zuul_url).content) 
-    gate_queues = next(pipeline['change_queues'] for pipeline in upstream_zuul['pipelines'] if pipeline['name'] == 'gate')
-    tripleo_heads = next(queue for queue in gate_queues if queue['name'] == 'tripleo')['heads']
-    if tripleo_heads:
-        tripleo_queue = tripleo_heads[0]
-    return pd.DataFrame(tripleo_queue)
+def get_zuul_queue(zuul_status_url, pipeline_name, queue_name):
+    zuul_status = json.loads(requests.get(zuul_status_url).content) 
+    pipeline_queues = next(pipeline['change_queues'] for pipeline in zuul_status['pipelines'] if pipeline['name'] == pipeline_name)
+    queue = pd.DataFrame()
+    if pipeline_queues:
+        queue_heads = next(queue for queue in pipeline_queues if queue['name'] == queue_name)['heads']
+        if queue_heads:
+            queue = pd.DataFrame(queue_heads[0])
+    return queue
+
 
 def get_upstream_tripleo_bugs():
     launchpad = Launchpad.login_anonymously('OOOQ Ruck Rover', 'production', cachedir, version='devel')
@@ -165,14 +169,17 @@ def analyze_infra_issues(infra_issues):
     # TODO: Print week's ones
     print(infra_issues.head())
 
-def analyze_upstream_tripleo_gate(gate_queue):
+def analyze_zuul_queue(queue_name, queue):
     age = 7
-    print("Upstream tripleo gate jobs older older than {} hours:".format(age))
+    print("{} jobs older older than {} hours:".format(queue_name, age))
     # Age hours ago 
     hours_ago = time() - (age * 3600)
     # From zuul's code
     hours_ago = int(hours_ago * 1000)
-    print(gate_queue.loc[gate_queue['enqueue_time'] < hours_ago])
+    if 'enqueue_time' in queue:
+        enqueue_time = queue.loc[queue['enqueue_time'] < hours_ago]
+        if not enqueue_time.empty:
+            print(enqueue_time)
 
 
 def analyze_tripleo_gate_status(gate_status):
@@ -182,7 +189,7 @@ def analyze_tripleo_gate_status(gate_status):
 
 def analyze_rechecks(rechecks):
     top_number = 5
-    print("Top {} rechecks: ")
+    print("Top {} rechecks: ".format(top_number))
     # Print top number
     # TODO: Filter by tripleo
     print(rechecks.head(top_number)['bug_data'])
@@ -192,11 +199,14 @@ def analyze_rechecks(rechecks):
 def main():
     # TODO: select with arguments what to show
     analyze_infra_issues(get_infra_issues())
-    analyze_upstream_tripleo_gate(get_upstream_tripleo_gate())
+    analyze_zuul_queue("Openstack infra gate", 
+            get_zuul_queue(upstream_zuul_url, pipeline_name='gate', queue_name='tripleo'))
+    analyze_zuul_queue("RDO infra periodic",
+            get_zuul_queue(rdo_zuul_url, pipeline_name='openstack-periodic-24hr', queue_name='openstack-infra/tripleo-ci'))
     analyze_rechecks(get_rechecks())
     
     #FIXME: Very costly, find a way to bypass IRC
-    #analyze_tripleo_gate_status(get_irc_gate_status())
+    analyze_tripleo_gate_status(get_irc_gate_status())
 
 if __name__ == '__main__':
     main()
