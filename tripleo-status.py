@@ -78,10 +78,10 @@ def get_irc_gate_status():
     failing_jobs = [""]
 
     def on_connect(connection, event):
-        connection.join('#oooq')
+        connection.join('#oooq-test')
     
     def on_join(connection, event):
-        connection.privmsg('#oooq', '!gatestatus')
+        connection.privmsg('#oooq-test', '!gatestatus')
 
     def on_disconmnect(connection, event):
         raise SystemExit()
@@ -177,9 +177,12 @@ def analyze_zuul_queue(queue_name, queue):
     # From zuul's code
     hours_ago = int(hours_ago * 1000)
     if 'enqueue_time' in queue:
-        enqueue_time = queue.loc[queue['enqueue_time'] < hours_ago]
-        if not enqueue_time.empty:
-            print(enqueue_time)
+        stuck_queue= queue.loc[queue['enqueue_time'] < hours_ago]
+        if not stuck_queue.empty:
+            for idx, stuck_queue in stuck_queue.iterrows():
+                print(stuck_queue['url'])
+                for job in stuck_queue['jobs']:
+                    print(" - http://zuul.openstack.org/{}".format(job['url']))
 
 
 def analyze_tripleo_gate_status(gate_status):
@@ -206,7 +209,8 @@ def main():
     analyze_rechecks(get_rechecks())
     
     #FIXME: Very costly, find a way to bypass IRC
-    analyze_tripleo_gate_status(get_irc_gate_status())
-
+    #analyze_tripleo_gate_status(get_irc_gate_status())
+    
+    #TODO: Add prmoter checks 38.145.34.55
 if __name__ == '__main__':
     main()
