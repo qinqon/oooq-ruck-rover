@@ -1,0 +1,46 @@
+details:
+    page_title: Tripleo CI Ruck/Rover cockpit 
+layout:
+    - row_1_of_3:
+        - col_1_of_4:
+            - tile_template: listing
+              tile_id: gate_status
+              title: Gate status
+        - col_1_of_4:
+            - tile_template: fancy_listing 
+              tile_id: urgent_bugs
+              title: Urgent bugs
+        - col_1_of_4:
+            - tile_template: just_value
+              tile_id: upstream_zuul
+              title: Upstream zuul
+        - col_1_of_4:
+            - tile_template: just_value
+              tile_id: rdo_zuul
+              title: RDO zuul
+    - row_1_of_3:
+        - col_1_of_4:
+            - tile_template: fancy_listing
+              tile_id: master_promotion
+              title: Master promotion
+        - col_1_of_4:
+            - tile_template: fancy_listing
+              tile_id: queens_promotion 
+              title: Queens promotion
+        - col_1_of_4:
+            - tile_template: fancy_listing
+              tile_id: pike_promotion 
+              title: Pike promotion
+        - col_1_of_4:
+            - tile_template: fancy_listing
+              tile_id: ocata_promotion 
+              title: Ocata promotion
+    - row_1_of_3:
+        - col_1_of_2:
+            - tile_template: text 
+              tile_id: infra_issues
+              title: openstack infra issues
+        - col_1_of_2:
+            - tile_template: listing
+              tile_id: elastic_rechecks
+              title: Top 5 tripleo elastic rechecks
