@@ -22,7 +22,8 @@ infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{
 failing_check_jobs = re.compile('^FAILING CHECK JOBS: .*')
 sova_status_table = re.compile('.*arrayToDataTable\((\[.*\])\);.*', re.DOTALL)
 sova_overall_job_name = re.compile('.*.*function (.*)_overall.*')
-promoter_skipping_log = re.compile('promoter Skipping promotion of (.*) to (.*), missing successful jobs:(.*)')
+promoter_skipping_log = re.compile('.*promoter Skipping promotion of (.*) to (.*), missing successful jobs:(.*)')
+promoter_trying_to = re.compile('.*promoter Trying to promote (.*) to (.*)')
 
 infra_status_url = 'https://wiki.openstack.org/wiki/Infrastructure_Status'
 upstream_zuul_url = 'http://zuul.openstack.org/status'
@@ -136,22 +137,32 @@ def get_minutes_enqueued(zuul_job):
     else:
         return 0
 
-def get_promoter_failures(release_name):
-    promoter_master_logs = requests.get('http://38.145.34.55/master.log')    
-    for log_line in reversed(promoter_master_logs.text):
-        look_for_promotions = False
+def get_promoter_status(release_name):
+    promoter_master_logs = requests.get("http://38.145.34.55/{}.log".format(release_name))    
+    look_for_promotions = False
+    status = {}
+    last_promotion_name = ''
+    #FIXME: Optimize with a reversed sequence
+    for log_line in reversed(list(promoter_master_logs.iter_lines())):
         if look_for_promotions: 
-            m = re.match(promoter_skipping_log)
-            if m:
-                print(m.group(0))
-                print(m.group(1))
-                print(m.group(2))
+            if 'promoter STARTED' in log_line:
+                break
+            elif 'SUCCESS' in log_line:
+                status[last_promotion_name] = 'success'
+            elif 'FAILURE' in log_line:
+                status[last_promotion_name] = 'failure'
+            elif promoter_trying_to.match(log_line):
+                #TODO: Don't run it twice
+                trying_to_promote = promoter_trying_to.match(log_line)
+                last_promotion_name = "{} -> {}".format(trying_to_promote.group(1), trying_to_promote.group(2))     
+                status[last_promotion_name] = 'noop'
+            elif promoter_skipping_log.match(log_line):
+                status[last_promotion_name] = 'skipped'
 
         elif 'promoter FINISHED' in log_line:
             look_for_promotions = True
-        elif 'promoter STARTED' in log_line:
-            break
-
+    print(status)
+    return status
 
 def format_enqueue_time(minutes_enqueued):
     if minutes_enqueued > 0:
@@ -199,7 +210,18 @@ def update_tipboard_zuul_enqueue_time(status_url, pipeline_name, queue_name, tip
     requests.post("{}/{}".format(tipboard_config_url, tipboard_key), 
             data = { 
                 'value': json.dumps(config)})
- 
+
+def update_tipboard_promotion(release_name):
+    promotion_status = get_promoter_status(release_name)
+    tipboard_data = []
+    for phase, status in promotion_status.iteritems():
+        tipboard_data.append({'label': phase, 'text': status})
+    
+    requests.post(tipboard_push_url, 
+            data = {'tile': 'fancy_listing', 
+                    'key': release_name + '_promotion',
+                    'data': json.dumps(tipboard_data) })
+    
 def main():
     # TODO: select with arguments what to show
     #analyze_zuul_queue("Openstack infra gate", 
@@ -207,42 +229,44 @@ def main():
     #analyze_zuul_queue("RDO infra periodic",
     #        get_zuul_queue(rdo_zuul_url, pipeline_name='openstack-periodic-24hr', queue_name='openstack-infra/tripleo-ci'))
     #analyze_rechecks(get_rechecks())
-    periodic_queue = get_zuul_queue(rdo_zuul_url, pipeline_name='openstack-periodic-24hr', queue_name='openstack-infra/tripleo')
-    oldest_periodic_job = get_oldest_zuul_job(periodic_queue)
     
-    update_tipboard_zuul_enqueue_time(
-        status_url=upstream_zuul_url, 
-        pipeline_name='gate', 
-        queue_name='tripleo', 
-        tipboard_title='Tripleo gate', 
-        tipboard_key='upstream_zuul')
- 
-    update_tipboard_zuul_enqueue_time(
-        status_url=rdo_zuul_url, 
-        pipeline_name='openstack-periodic-24hr', 
-        queue_name='openstack-infra/tripleo', 
-        tipboard_title='Tripleo periodic', 
-        tipboard_key='rdo_zuul')
-    
-    
-    requests.post(tipboard_push_url, 
-            data = {'tile': 'fancy_listing', 
-                    'key':'urgent_bugs', 
-                    'data': json.dumps(format_bugs(get_urgent_bugs()))})
-    
-    requests.post(tipboard_push_url, 
-            data = {'tile': 'text', 
-                    'key':'infra_issues', 
-                    'data': json.dumps({'text': str(format_infra_issues(get_infra_issues()))})})
-    requests.post(tipboard_config_url + '/infra_issues', 
-            data = { 
-                    'value': json.dumps({'font_size': 23})})
-    
-    requests.post(tipboard_push_url, 
-            data = {'tile': 'listing', 
-                    'key':'elastic_rechecks', 
-                    'data': json.dumps({'items': format_rechecks(get_rechecks())})})
+#    update_tipboard_zuul_enqueue_time(
+#        status_url=upstream_zuul_url, 
+#        pipeline_name='gate', 
+#        queue_name='tripleo', 
+#        tipboard_title='Tripleo gate', 
+#        tipboard_key='upstream_zuul')
+# 
+#    update_tipboard_zuul_enqueue_time(
+#        status_url=rdo_zuul_url, 
+#        pipeline_name='openstack-periodic-24hr', 
+#        queue_name='openstack-infra/tripleo', 
+#        tipboard_title='Tripleo periodic', 
+#        tipboard_key='rdo_zuul')
+#    
+#    
+#    requests.post(tipboard_push_url, 
+#            data = {'tile': 'fancy_listing', 
+#                    'key':'urgent_bugs', 
+#                    'data': json.dumps(format_bugs(get_urgent_bugs()))})
+#    
+#    requests.post(tipboard_push_url, 
+#            data = {'tile': 'text', 
+#                    'key':'infra_issues', 
+#                    'data': json.dumps({'text': str(format_infra_issues(get_infra_issues()))})})
+#    requests.post(tipboard_config_url + '/infra_issues', 
+#            data = { 
+#                    'value': json.dumps({'font_size': 23})})
+#    
+#    requests.post(tipboard_push_url, 
+#            data = {'tile': 'listing', 
+#                    'key':'elastic_rechecks', 
+#                    'data': json.dumps({'items': format_rechecks(get_rechecks())})})
    
+    update_tipboard_promotion('master')
+    update_tipboard_promotion('queens')
+    update_tipboard_promotion('pike')
+    update_tipboard_promotion('ocata')
 
 if __name__ == '__main__':
     main()
