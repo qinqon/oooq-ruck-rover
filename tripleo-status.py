@@ -174,9 +174,14 @@ def get_promoter_status(release_name):
         elif 'promoter FINISHED' in log_line:
             look_for_promotions = True
 
+	elif 'promoter STARTED' in log_line: 
+       	    started_time=get_log_time(log_line)
+            status = {'ongoing': 'Wait for the result'}
+	    break
+     
 	elif 'ERROR    promoter' in log_line: 
        	    started_time=get_log_time(log_line)
-            status = {'ERROR': log_line.split('ERROR    promoter')[1]}
+            status = {'error': log_line.split('ERROR    promoter')[1]}
 	    break
            				
 		
@@ -233,8 +238,10 @@ def update_tipboard_promotion(release_name):
     started_time, promotion_status = get_promoter_status(release_name)
     tipboard_data = []
     tipboard_data.append({'label': 'Last try', 'text': started_time})
-    if 'ERROR' in promotion_status:
-	tipboard_data.append({'label': 'ERROR', 'text': promotion_status['ERROR']})
+    if 'error' in promotion_status:
+	tipboard_data.append({'label': 'error', 'text': promotion_status['error']})
+    elif 'ongoing' in promotion_status:
+	tipboard_data.append({'label': 'ongoing', 'text': promotion_status['ongoing']})
     else:
     	for phase, status in promotion_status.iteritems():
         	tipboard_data.append({'label': status, 'text': phase})
