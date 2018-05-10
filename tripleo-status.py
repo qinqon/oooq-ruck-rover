@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 from time import time
 from launchpadlib.launchpad import Launchpad
 
+from promoter_status import get_promoter_status
+
 infra_status_regexp = re.compile('^ *([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) *UTC *(.+)$')
 failing_check_jobs = re.compile('^FAILING CHECK JOBS: .*')
 sova_status_table = re.compile('.*arrayToDataTable\((\[.*\])\);.*', re.DOTALL)
@@ -136,56 +138,6 @@ def get_minutes_enqueued(zuul_job):
         return minutes_enqueued
     else:
         return 0
-
-def get_promoter_status(release_name):
-    promoter_master_logs = requests.get("http://38.145.34.55/{}.log".format(release_name))    
-    look_for_promotions = False
-    status = {}
-    last_promotion_name = ''
-    last_promotion_status = 'noop'
-    started_time = ''
-    
-    def get_log_time(log_line):
-	log_line_splitted=log_line.split()
-        log_time="{} {}".format(log_line_splitted[0], log_line_splitted[1])
-	return log_time
-
-    #FIXME: Optimize with a reversed sequence
-    for log_line in reversed(list(promoter_master_logs.iter_lines())):
-        if look_for_promotions: 
-            if 'promoter STARTED' in log_line:
-                started_time=get_log_time(log_line)
-                break
-            elif 'SUCCESS' in log_line:
-                last_promotion_status = 'success'
-            elif 'FAILURE' in log_line:
-                last_promotion_status = 'failure'
-            elif promoter_trying_to.match(log_line):
-                #TODO: Not very efficient
-                m = promoter_trying_to.match(log_line)
-                initial_phase = m.group(1)
-                target_phase = m.group(2)
-                last_promotion_name = target_phase
-                status[last_promotion_name] = last_promotion_status
-                last_promotion_status = 'noop'
-            elif promoter_skipping_log.match(log_line):
-                last_promotion_status = 'skipped'
-
-        elif 'promoter FINISHED' in log_line:
-            look_for_promotions = True
-
-	elif 'promoter STARTED' in log_line: 
-       	    started_time=get_log_time(log_line)
-            status = {'ongoing': 'Wait for the result'}
-	    break
-     
-	elif 'ERROR    promoter' in log_line: 
-       	    started_time=get_log_time(log_line)
-            status = {'error': log_line.split('ERROR    promoter')[1]}
-	    break
-           				
-		
-    return (started_time, status)
 
 def format_enqueue_time(minutes_enqueued):
     if minutes_enqueued > 0:
